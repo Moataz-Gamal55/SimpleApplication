@@ -1,11 +1,22 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using StackExchange.Redis;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+var redisConnectionString = builder.Configuration["ConnectionStrings:Redis"] ?? "localhost:6379";
 
+try
+{
+    var redis = ConnectionMultiplexer.Connect(redisConnectionString);
+    builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
+}
+catch
+{
+    Console.WriteLine($"WARNING: Could not connect to Redis at {redisConnectionString}. App will start but counter will fail.");
+}
 
-// Allow cors for simplicity 
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -17,53 +28,30 @@ builder.Services.AddCors(options =>
         });
 });
 
-
 var app = builder.Build();
+
 app.UseCors("AllowAll");
-
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-
-app.UseHttpsRedirection();
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
-app.MapGet("/api/message", () =>
+app.MapGet("/api/message", (IConnectionMultiplexer? muxer) =>
 {
     var hostName = System.Net.Dns.GetHostName();
+    long count = -1;
+
+    if (muxer != null && muxer.IsConnected)
+    {
+        var db = muxer.GetDatabase();
+        count = db.StringIncrement("page_views");
+    }
+
     return Results.Ok(new
     {
-        Message = "Hello world. From the .NET API.",
+        Message = "Hello from the Stateful Backend!",
         ServedBy = hostName,
+        PageViewCount = count == -1 ? "Redis Unavailable" : count.ToString(),
         Timestamp = DateTime.UtcNow
     });
 });
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
-
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
