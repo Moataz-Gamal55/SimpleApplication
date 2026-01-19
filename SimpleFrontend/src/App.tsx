@@ -4,6 +4,7 @@ import './App.css'
 type Data = {
   message: string;
   servedBy: string;
+  pageViewCount: string;
   timestamp: string;
 }
 
@@ -35,6 +36,7 @@ function App() {
             <p><strong>Message:</strong> {data.message}</p>
             <p><strong>Server Pod ID:</strong> {data.servedBy}</p>
             <p><strong>Timestamp:</strong> {data.timestamp}</p>
+            <p><strong>Page View Cout:</strong> {data.pageViewCount}</p>
           </div>
         ) : (
           !error && <p>Loading data from {API_URL}...</p>
